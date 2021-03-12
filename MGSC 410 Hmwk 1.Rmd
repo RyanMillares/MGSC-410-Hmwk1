@@ -1,0 +1,298 @@
+---
+title: "MGSC 410 Hmwk 1"
+author: "Ryan Millares"
+date: "2/26/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+# As long as you are working in a Rstudio Project file, you shouldn't need to 'hard code' directories like this 
+# change to your own working directory
+# knitr::opts_knit$set(root.dir = 'C:/Users/hersh/Dropbox/Chapman/Teaching/MGSC_310/Fall_2019/problem_sets')
+# setwd('C:/Users/hersh/Dropbox/Chapman/Teaching/MGSC_310/Fall_2019/problem_sets')
+
+# set seed to your own favorite number
+set.seed(1818)
+options(width=70)
+options(scipen=10)
+
+
+# general rchunk code options
+
+# this sets text to small
+opts_chunk$set(tidy.opts=list(width.wrap=50),tidy=TRUE, size = "vsmall")  
+opts_chunk$set(message = FALSE,                                          
+               warning = FALSE,
+               # "caching" stores objects in code chunks and only rewrites if you change things
+               cache = TRUE,                               
+               # automatically downloads dependency files
+               autodep = TRUE,
+               # 
+               cache.comments = FALSE,
+               # 
+               collapse = TRUE,
+               fig.width = 5,  
+               fig.height = 4,
+               fig.align='center')
+
+#install.packages("formatR")
+```
+
+## R Markdown
+
+
+```{r}
+library("tidyverse")
+library("psych")
+library("readr")
+library('ISLR')
+library("rsample")
+library("ggplot2")
+library("ggthemes")
+
+```
+
+## Dataset
+
+You can also embed plots, for example:
+
+```{r}
+tweets <- read_csv(here::here("datasets", "Tweets.csv"))
+
+
+tweets <- select(tweets, -c(airline_sentiment_gold, negativereason_gold))
+psych::describe(tweets)
+```
+
+
+## split tweets by sentiment value
+```{r}
+
+#words <- tweets %>% select(c(airline_sentiment, text))
+words <- tweets %>% drop_na(airline_sentiment, text)
+sentiments = list()
+#words['airline_sentiment']
+words$sentiment <- as.factor(words$airline_sentiment)
+
+good_tweets <- words %>% filter(sentiment == "positive")
+bad_tweets <- words %>% filter(sentiment == "negative")
+neutral_tweets <- words %>% filter(sentiment == "neutral")
+unique(words$sentiment)
+
+```
+
+## Good words (this absolutely failed)
+```{r}
+good_msgs <- as.list(good_tweets$text)
+bad_msgs <- as.list(bad_tweets$text)
+neutral_msgs <- as.list(neutral_tweets$text)
+num = length(good_msgs)
+good_words = list()
+good_counts = list()
+index = 0
+
+#hello = "h.el.lo.. t..ere"
+#newhello <- hello %>% str_remove_all("[.]")
+for (i in range(1:num)){
+  msg <- good_msgs[[i]] %>% str_remove_all("[.,!]")
+  words <- msg %>% tolower() %>% strsplit(" ")
+  words <- as.list(words[[1]])
+  numWords = length(words)
+  counter = 1
+  while(counter <= numWords){
+  #for (j in range(1:numWords)){
+    if(is.element(words[counter], good_words)){
+  
+      #print(paste(words[[j]], "found"))
+      #print(good_counts[which(good_words %in% word)])
+      #found <- which(good_words %in% word)
+      #print(found)
+      #good_counts[found] = good_counts[found] + 1
+      #print(word)
+      #print(good_counts[match(word, good_words)]) 
+      
+      #good_counts[match(word, good_words)[1]] = good_counts[match(word, good_words)[1]] + 1
+    }
+    else{
+      #print(paste(words[[j]], "not found"))
+      good_words[index] = words[counter]
+      good_counts[index] = 1
+      index = index + 1
+    }
+    counter = counter + 1
+  }
+  
+ 
+}
+good_words_df <- do.call(rbind, Map(data.frame, word = good_words, count = good_counts))
+head(good_words_df)
+
+
+
+```
+
+
+## What words trigger different sentiment values? (This one worked)
+```{r}
+testSents = list()
+testSents[1] = "Hello there. Sir."
+testSents[2] = "Hello my good sir."
+testSents[3] = "Why hello there."
+testSents[4] = "Oh, hello, hello oh!"
+
+
+
+orderCounts <- function(tweets){
+  msglist = list()
+  newwords = list()
+  newcounts = list()
+  newindex = 1
+  newnum = length(tweets)
+  # Convert list of tweets as nested list containing lists of tweets as separate words
+  for(i in 1:newnum){
+
+    #sent = testSents[i]
+    newmsg <- tweets[[i]] %>% str_remove_all("[.,!]")
+  
+    thewords <- newmsg %>% tolower() %>% strsplit(" ")
+  
+    msglist[i] = thewords
+
+  }
+  
+  for(msg in msglist){
+    for(word in msg){
+      #For every word in each msg, check if it's occurred before.
+      #If no, add it to list of words and give a count of 1
+      #If yes, find index of word in list and increment its count
+      if(is.element(word, newwords)){
+        found <- which(newwords %in% word)
+        newcounts[[found]]= newcounts[[found]] + 1
+      
+      }
+      else{
+        newwords[newindex] = word
+        newcounts[newindex] = 1
+        newindex = newindex + 1
+      }
+    }
+  }
+  # Combine list of words and counts into 1 dataframe
+  good_words_df <- do.call(rbind, Map(data.frame, word = newwords, count = newcounts))
+  #head(good_words_df)
+  ordered_words <- good_words_df[order(-good_words_df$count),]
+  return(ordered_words)
+}
+#Test function calls
+countsGood <- orderCounts(good_msgs)
+countsBad <- orderCounts(bad_msgs)
+countsNeutral <- orderCounts(neutral_msgs)
+
+```
+## Which type of tweets get retweeted more often?
+
+```{r}
+words <- tweets %>% drop_na(airline_sentiment, text)
+
+words$sentiment <- as.factor(words$airline_sentiment)
+
+good_tweets <- words %>% filter(sentiment == "positive")
+bad_tweets <- words %>% filter(sentiment == "negative")
+neutral_tweets <- words %>% filter(sentiment == "neutral")
+
+avgRetweet <- function(tweets){
+  return(sum(tweets$retweet_count) / nrow(tweets))
+  
+}
+
+bad_retweets <- avgRetweet(bad_tweets)
+neutral_retweets <- avgRetweet(neutral_tweets)
+good_retweets <- avgRetweet(good_tweets)
+
+
+data <- data.frame(
+  group=c("Bad Tweets", "Neutral Tweets", "Good Tweets"),
+  value=c(bad_retweets, neutral_retweets, good_retweets)
+)
+
+# Basic piechart
+ggplot(data, aes(x="", y=value, fill=group)) +
+  geom_bar(stat="identity", width=1) +
+  coord_polar("y", start=0) +
+  theme_void() + ggtitle("Average retweet amounts per sentiment type")
+```
+
+## Which airline has the highest social media reputation
+```{r}
+airlines <- unique(tweets$airline)
+sentiments <- unique(tweets$airline_sentiment)
+
+numSent <- length(sentiments)
+numAir <- length(airlines)
+
+airlineList = list()
+sents = list()
+
+goodCount = list()
+neutralCount = list()
+badCount = list()
+theCount = list()
+
+index1 = 1
+
+testtable <- table(tweets$airline, tweets$airline_sentiment)
+testtable
+tabledf <- as.data.frame.matrix(testtable)
+tabledf
+
+for(air in airlines){
+  tempFrame <- tweets %>% filter(airline == air)
+  for(sent in sentiments){
+    airlineList[index] = air
+    sents[index] = sent
+    theCount[index] = nrow(tempFrame %>% filter(airline_sentiment == sent))/nrow(tempFrame)
+
+    index = index + 1
+    
+  }
+}
+sentiment_counts_df <- do.call(rbind, Map(data.frame, Airline = airlineList, Sentiment_Value = sents, Percent_of_Tweets = theCount))
+
+ggplot(data = sentiment_counts_df, aes(x = Airline, y = Percent_of_Tweets, fill = Sentiment_Value)) + 
+    geom_bar(stat='identity') + ggtitle("Percentage of Tweets by Sentiment by Airline")
+
+```
+## Word Frequency among Negative Tweets by Airline
+
+```{r}
+tweets_split <- initial_split(tweets, p = 0.75)
+
+tweets_train <- training(tweets_split)
+tweets_test <- testing(tweets_split)
+
+
+deltaFrame <- tweets %>% filter(airline == "Delta" & airline_sentiment == "negative")
+unitedFrame <- tweets %>% filter(airline == "United" & airline_sentiment == "negative")
+virginFrame <- tweets %>% filter(airline == "Virgin America" & airline_sentiment == "negative")
+SouthwFrame <- tweets %>% filter(airline == "Southwest" & airline_sentiment == "negative")
+USFrame <- tweets %>% filter(airline == "US Airways" & airline_sentiment == "negative")
+AmFrame <- tweets %>% filter(airline == "American" & airline_sentiment == "negative")
+
+deltaBad <- orderCounts(as.list(deltaFrame$text))
+unitedBad <- orderCounts(as.list(unitedFrame$text))
+virginBad <- orderCounts(as.list(virginFrame$text))
+southBad <- orderCounts(as.list(SouthwFrame$text))
+USBad <- orderCounts(as.list(USFrame$text))
+AmBad <- orderCounts(as.list(AmFrame$text))
+
+AmBad
+
+
+```
+
+
+```{r}
+data
+
+```
